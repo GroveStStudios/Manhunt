@@ -1,0 +1,23 @@
+In Progress:
+--acceleration/stop tuning (clean stop)
+
+Not Started:
+--server handling / multiplayer
+--collision detection
+--vision cone & transparency
+--hiding places (bush & tumbleweed)
+--menu & start
+--name above character
+--textures
+--"map" & "camera" handling
+--direction handling
+
+Done:
+--createTile function
+--uv texture stuff
+--basic movement
+
+
+notes:
+can use multiple programs for shader don't forget
+HTML5?

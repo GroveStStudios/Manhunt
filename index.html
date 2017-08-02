@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Placeholder: The Game</title>
+  <style>
+    body {
+      margin: 0;
+    }
+    #window{
+      width:90vw;
+      height:45vw;
+    }
+    .game {
+      width:90%;
+      height:90%;
+      float:left;
+      border:1px solid black;
+      overflow:hidden;
+    }
+    canvas {
+      width:100%;
+      height:100%;
+    }
+  </style>
+</head>
+<body>
+  <script id="vert" type="notjs">
+    //in
+    attribute vec2 pos;
+    attribute vec2 uvcoord;
+    uniform vec2 ures;
+    //out
+    varying vec2 uv;
+    void main() {
+      vec2 clip = pos/ures*2.0 - 1.0;
+      gl_Position = vec4(clip,0,1);
+      uv = uvcoord;
+    }
+  </script>
+  <script id="frag" type="notjs">
+    precision mediump float;
+    uniform vec3 col;
+    varying vec2 uv;
+    //uniform sampler2D _tex;
+    void main() {
+      gl_FragColor = vec4(col, 1);//*texture2D(_tex, uv);
+    }
+  </script>
+  <div id="window">
+    <div class="game">
+      <canvas id="canv"></canvas>
+    </div>
+    <div class="stats">
+      <span id="pos">Pos: </span>
+      <br/><br/>
+      <span id="veloc">Velocity: </span>
+      <br/><br/>
+      <span id="accel">Accel: </span>
+      <br/><br/>
+      <span id="speed">Speed: </span>
+    </div>
+  </div>
+  <script src="jquery.min.js"></script>
+  <script src="manhunt.js"></script>
+</body>
+</html>
