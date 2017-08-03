@@ -170,10 +170,10 @@ function main(){
   playerPos.y = canv.height/2;
 
   //init main loop
-  gameLoop(gl, canv, colUnifLoc);
+  upgdateGame(gl, canv, colUnifLoc);
 }
 
-function gameLoop(gl, canv, colLoc){
+function updateGame(gl, canv, colLoc){
   updateInfo();
   gl.clear(gl.COLOR_BUFFER_BIT);
   playerVel.x += playerAccel.x*accelScaling;
@@ -198,11 +198,24 @@ function updateInfo(){
   $("#speed").text("Speed: "+playerSpeed);
 }
 
+//player class constructor
+var gamePlayer = function(gameInstance, playerInstance){
+  this.instance = playerInstance;
+  this.game = gameInstance;
+
+  this.pos = {x:0, y:0};
+  this.accel = {x:0, y:0};
+  this.vel = {x:0, y:0};
+  this.speed = 0; //square of player speed
+
+  this.color = 'rgba(255,255,255,1)';
+  //other things the player has
+})
+
 const accelScaling = 0.07;
 const maxSpeed = 4.0;
 var playerPos = {x:0, y:0};
 var playerAccel = {x:0, y:0};
 var playerVel = {x:0, y:0};
 var playerSpeed = 0; //square of player speed
-
 main();
