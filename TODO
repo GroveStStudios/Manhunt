@@ -1,8 +1,8 @@
 In Progress:
 --acceleration/stop tuning (clean stop)
+--multiplayer (complex!)
 
 Not Started:
---server handling / multiplayer
 --collision detection
 --vision cone & transparency
 --hiding places (bush & tumbleweed)
