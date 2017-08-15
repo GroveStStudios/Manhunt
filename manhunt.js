@@ -162,8 +162,19 @@ game_core.prototype.client_onconnected = function(data) {
 };
 
 game_core.prototype.client_onserverupdate_recieved = function(data){
-  var player_host = this.instance.host;
-  var player_clients = this.instance.clients;
+  if(this.players.self.host){
+    var player_host = this.players.self;
+    var player_clients = this.players.clients;
+  } else {
+    var player_clients = [this.players.self];
+    for (client in this.players.clients) {
+      if (client.self.host){
+        var player_host = client.self;
+      } else{
+        player_clients.push(client.self);
+      }
+    }
+  }
   //Store server time
   this.server_time = data.t;
   //Update our local offset time from the last server update
@@ -175,7 +186,7 @@ game_core.prototype.client_onserverupdate_recieved = function(data){
     this.server_updates.splice(0,1);
   }
   this.oldest_tick = this.server_updates[0].t;
-  this.client_process_net_prediction_correction();
+  //this.client_process_net_prediction_correction();
 };
 
 game_core.prototype.client_onnetmessage = function(data) {
@@ -224,15 +235,14 @@ game_core.prototype.client_onreadygame = function(data) {
 
 game_core.prototype.handle_server_input = function(client, input, input_time, input_seq) {
   if(client.userid == this.players.self.instance.userid){
-    var player_client = this.players.self;
+    this.players.self.inputs.push({inputs:input, time:input_time, seq:input_seq});
   } else {
-    for(client in this.players.others){
-      if(client.userid == client.instance.userid){
-        var player_client = this.players.self;
+    for(var c=0; c<this.players.others.length; c++){
+      if(client.userid == this.players.others[c].instance.userid){ //this.players.others[clientid].instance???
+        this.players.others[c].inputs.push({inputs:input, time:input_time, seq:input_seq});
       }
     }
   }
-  player_client.inputs.push({inputs:input, time:input_time, seq:input_seq});
 };
 
 game_core.prototype.client_handle_input = function() {
@@ -354,8 +364,8 @@ game_core.prototype.update = function(t){
       this.players.self.instance.emit( 'onserverupdate', this.laststate );
     }
     if(this.players.others.length){
-      for(player in this.players.others) {
-        player.instance.emit( 'onserverupdate', this.laststate );
+      for(var i=0; i<this.players.others.length; i++) {
+        this.players.others[i].instance.emit( 'onserverupdate', this.laststate );
       }
     }
   } else{
@@ -363,8 +373,8 @@ game_core.prototype.update = function(t){
     this.client_handle_input();
     this.players.self.updatePlayer(this.dt);
     //<----needs the interpolation stuff and the updates etc etc
-    for(player in this.players.others){
-      player.updatePlayer(this.dt);
+    for(var i=0; i<this.players.others.length; i++) {
+      this.players.others[i].updatePlayer(this.dt);
     }
   }
   //schedule next update

@@ -48,12 +48,13 @@ game_server.create_game = function(player) {
 }
 
 game_server.start_game = function(game){
-  for(client in game.clients){
-    client.send('s.j.' + game.host.userid);
-    client.game = game;
-    client.send('s.r.'+String(game.game_core.local_time).replace('.','-'));
-  }
+  console.log("game "+game.id+" has begun");
   game.host.send('s.r.'+String(game.game_core.local_time).replace('.','-'));
+  for(var i=0; i<game.clients.length; i++){
+    game.clients[i].send('s.j.' + game.host.userid);
+    game.clients[i].game = game;
+    game.clients[i].send('s.r.'+String(game.game_core.local_time).replace('.','-'));
+  }
   game.active = true;
 }
 
@@ -70,7 +71,9 @@ game_server.join_game = function(player) {
         game_instance.game_core.players.others.push = player;
         //also tell other players to add player
         game_instance.player_count++;
-        //start game appropriately
+        if(!this.games[gameid].active){
+          this.start_game(this.games[gameid]);
+        }
       }
     }
     if(!joined_game){
@@ -84,9 +87,9 @@ game_server.join_game = function(player) {
 game_server.end_game = function(gameid, userid) {
   var game = this.games[gameid];
   if(game) {
-    game.gamecore.stop_update();
+    game.game_core.stop_update();
     if(game.player_count > 1) {
-      if(userid == game.player_host.userid) {
+      if(userid == game.host.userid) {
         if(game.player_client) {
           game.player_client.send('s.e'); //EITHER DO FOR ALL CLIENTS OR IGNORE
           this.join_game(game.player_client);
@@ -111,8 +114,8 @@ game_server.on_input = function(client, parts) {
   var input_commands = parts[1].split('-');
   var input_time = parts[2].replace('-','.');
   var input_seq = parts[3];
-  if(client && client.game && client.game.gamecore) {
-    client.game.gamecore.handle_server_input(client, input_commands, input_time, input_seq);
+  if(client && client.game && client.game.game_core) {
+    client.game.game_core.handle_server_input(client, input_commands, input_time, input_seq);
   }
 };
 
