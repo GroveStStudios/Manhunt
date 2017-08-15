@@ -1,5 +1,5 @@
 var game_server = module.exports = { games : {}, game_count: 0},
- UUID = require('node-uuid'),
+ UUID = require('uuid'),
  verbose = true;
 
 global.window = global.document = global;
@@ -27,12 +27,10 @@ game_server.create_game = function(player) {
     id : UUID(),
     host:player,
     clients:[],
-    world:{width:1080,height:960},
-    camera:{width:720,height:480},
     player_count:1
   };
 
-  this.games[game.id] = thegame;
+  this.games[game.id] = game;
   this.game_count++;
 
   game.game_core = new game_core(game);
@@ -84,20 +82,20 @@ game_server.join_game = function(player) {
 };
 
 game_server.end_game = function(gameid, userid) {
-  var thegame = this.games[gameid];
-  if(thegame) {
-    thegame.gamecore.stop_update();
-    if(thegame.player_count > 1) {
-      if(userid == thegame.player_host.userid) {
-        if(thegame.player_client) {
-          thegame.player_client.send('s.e'); //EITHER DO FOR ALL CLIENTS OR IGNORE
-          this.find_game(thegame.player_client);
+  var game = this.games[gameid];
+  if(game) {
+    game.gamecore.stop_update();
+    if(game.player_count > 1) {
+      if(userid == game.player_host.userid) {
+        if(game.player_client) {
+          game.player_client.send('s.e'); //EITHER DO FOR ALL CLIENTS OR IGNORE
+          this.join_game(game.player_client);
         }
       } else {
-        if(thegame.player_host) {
-          thegame.player_host.send('s.e');
-          thegame.player_host.hosting = false;
-          this.find_game(thegame.player_host);
+        if(game.player_host) {
+          game.player_host.send('s.e');
+          game.player_host.hosting = false;
+          this.join_game(game.player_host);
         }
       }
     }
@@ -109,7 +107,7 @@ game_server.end_game = function(gameid, userid) {
   }
 };
 
-game_server.onInput = function(client, parts) {
+game_server.on_input = function(client, parts) {
   var input_commands = parts[1].split('-');
   var input_time = parts[2].replace('-','.');
   var input_seq = parts[3];
@@ -118,11 +116,11 @@ game_server.onInput = function(client, parts) {
   }
 };
 
-game_server.onMessage = function(client,message) {
+game_server.on_message = function(client,message) {
   var message_parts = message.split('.');
   var message_type = message_parts[0];
   if(message_type == 'i') {
-     this.onInput(client, message_parts);
+     this.on_input(client, message_parts);
   } else if(message_type == 'p') {
      client.send('s.p.' + message_parts[1]);
   }

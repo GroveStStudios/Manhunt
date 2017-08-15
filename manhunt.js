@@ -12,7 +12,7 @@ var frames = 60/1000;
     }
     if ( !window.requestAnimationFrame ) {
         window.requestAnimationFrame = function ( callback, element ) {
-            var currTime = Date.now(), timeToCall = Math.max( 0, frame_time - ( currTime - lastTime ) );
+            var currTime = Date.now(), timeToCall = Math.max( 0, frames - ( currTime - lastTime ) );
             var id = window.setTimeout( function() { callback( currTime + timeToCall ); }, timeToCall );
             lastTime = currTime + timeToCall;
             return id;
@@ -27,23 +27,38 @@ var frames = 60/1000;
 var game_core = function(game_instance){
   this.instance = game_instance;
   this.server = this.instance !== undefined;
-  this.world = game_instance.world;
-  this.camera = game_instance.camera;
+  this.world = {width:1080,height:960};
+  this.camera = {width:720,height:480};
   this.teamOneCount = 0;
   this.teamTwoCount = 0;
+  this.keyIsPressed = {};
 
   if(this.server){
     this.players = {
       self: new game_player(this,this.instance.host),
       others: this.instance.clients.map(function(client){
         return new game_player(this,client);
-      });
+      })
     };
   } else{
+    //initialize gl, programs, and buffers
+    this.viewport = document.getElementById('viewport');
+    this.gl = initGL(this.viewport);
+    var prog = makeShaderProgram(this.gl, 'vert', 'frag');
+    this.gl.useProgram(prog);
+    setResolutionUniform(this.gl, prog);
+    this.colorUniform = this.gl.getUniformLocation(prog, "col");
+    var uvBuf = setShaderAttribute(this.gl, prog, "uvcoord");
+    //draw tile UVs (same for all tiles so we can just do it here, but draw is in other func?)
+    drawTile(this.gl,0,0,1/3.71);
+    var posBuf = setShaderAttribute(this.gl, prog, "pos");
+    //makeTexture(this.gl); (will need to change buffer per player)
+
     this.players = {
       self: new game_player(this),
-      others: [new game_player(this.instance.host)].concat(this.instance.clients) //how to avoid self being put in others?
+      others: [] //other players will be added when they join
     };
+    /*
     this.ghosts = {
       serverPosSelf : new game_player(this),
       serverPosOthers : [],
@@ -53,7 +68,7 @@ var game_core = function(game_instance){
     this.ghosts.server_pos_self.state = 'server_pos';
     this.ghosts.server_pos_other.state = 'server_pos';
     this.ghosts.server_pos_self.pos = { x:20, y:20 };
-
+    */
     this.server_updates = [];
   }
 
@@ -67,7 +82,7 @@ var game_core = function(game_instance){
   this._dte = new Date().getTime();
 
   this.create_keyboard();
-  this.createTimer();
+  this.create_timer();
   //Client specific initialisation
   if(!this.server) {
     this.client_create_configuration();
@@ -83,12 +98,14 @@ var game_core = function(game_instance){
 
 game_core.prototype.create_keyboard = function(){
   //set up keyboard listeners
-  document.addEventListener("keydown",function(event){
-    this.keyIsPressed[event.keyCode] = true;
-  });
-  document.addEventListener("keyup",function(event){
-    this.keyIsPressed[event.keyCode] = false;
-  });
+  if(!this.server){
+    document.addEventListener("keydown",function(event){
+      this.keyIsPressed[event.key] = true;
+    }.bind(this));
+    document.addEventListener("keyup",function(event){
+      this.keyIsPressed[event.key] = false;
+    }.bind(this));
+  }
 }
 
 game_core.prototype.create_timer = function(){
@@ -218,32 +235,32 @@ game_core.prototype.handle_server_input = function(client, input, input_time, in
   player_client.inputs.push({inputs:input, time:input_time, seq:input_seq});
 };
 
-game_core.prototype.client_handle_input(){
+game_core.prototype.client_handle_input = function() {
   var input_x = 0;
   var input_y = 0;
   var input = [];
-  if(this.keyIsPressed[68] || this.keyIsPressed[39]){ // d or RIGHT
+  if(this.keyIsPressed['d'] || this.keyIsPressed['ArrowRight']){
     input_x++;
     input.push('r');
   }
-  if(this.keyIsPressed[65] || this.keyIsPressed[37]){
+  if(this.keyIsPressed['a'] || this.keyIsPressed['ArrowLeft']){
     input_x--;
     input.push('l');
   }
-  if(this.keyIsPressed[87] || this.keyIsPressed[38]){ // w or UP
+  if(this.keyIsPressed['w'] || this.keyIsPressed['ArrowUp']){
     input_y++;
-    this.input.push('u');
+    input.push('u');
   }
-  if(this.keyIsPressed[83] || this.keyIsPressed[40]){ // s or DOWN
+  if(this.keyIsPressed['s'] || this.keyIsPressed['ArrowDown']){
     input_y--;
-    this.input.push('d');
+    input.push('d');
   }
-  if(this.keyIsPressed==32) { //space (stop)
+  if(this.keyIsPressed[' ']){
     game.players.self.vel.x = 0;
     game.players.self.vel.y = 0;
     input_x = 0;
     input_y = 0;
-    this.input.push('s');
+    input.push('s');
   }
   game.players.self.accel.x = input_x;
   game.players.self.accel.y = input_y;
@@ -260,33 +277,34 @@ game_core.prototype.client_handle_input(){
     + this.local_time.toFixed(3).replace('.','-')
     + '.' + this.input_seq;
   this.socket.send(server_packet);
-}
+};
 
 game_core.prototype.process_input = function( player ) {
   var x_dir = 0;
   var y_dir = 0;
-    for(var j = 0; j < player.inputs.length; ++j) {
-      if(player.inputs[j].seq <= player.last_input_seq) continue;
-      var input = player.inputs[j].inputs;
-      for(var i = 0; i < input.length; ++i) {
-        var key = input[i];
-        if(key == 'l') {
-          x_dir -= 1;
-        }
-        if(key == 'r') {
-          x_dir += 1;
-        }
-        if(key == 'd') {
-          y_dir += 1;
-        }
-        if(key == 'u') {
-          y_dir -= 1;
-        }
-        if(key == 's') {
-          x_dir = 0;
-          y_dir = 0;
-          break;
-        }
+  for(var j = 0; j < player.inputs.length; j++) {
+    if(player.inputs[j].seq <= player.last_input_seq) {
+      continue;
+    }
+    var input = player.inputs[j].inputs;
+    for(var i = 0; i < input.length; ++i) {
+      var key = input[i];
+      if(key == 'l') {
+        x_dir -= 1;
+      }
+      if(key == 'r') {
+        x_dir += 1;
+      }
+      if(key == 'd') {
+        y_dir += 1;
+      }
+      if(key == 'u') {
+        y_dir -= 1;
+      }
+      if(key == 's') {
+        x_dir = 0;
+        y_dir = 0;
+        break;
       }
     }
   }
@@ -321,13 +339,12 @@ game_core.prototype.checkCollision = function(item, others){ }
 game_core.prototype.update = function(t){
   this.dt = this.lastframetime ? ( (t - this.lastframetime)/1000.0).fixed() : 0.016;
   this.lastframetime = t;
-  this.gl.clear(gl.COLOR_BUFFER_BIT);
 
   if(this.server){
     this.server_time = this.local_time;
     this.laststate = {
       hp  : this.players.self.pos,                //'host position', the game creators position
-      cp  : this.players.other.pos,               //'client position', the person that joined, their position
+      //cp  : this.players.other.pos,               //'client position', the person that joined, their position
       his : this.players.self.last_input_seq,     //'host input sequence', the last input we processed for the host
       cis : this.players.others.map(function(p){ return p.last_input_seq; }),
                                                   //'client input sequence', the last inputs we processed for the client
@@ -336,19 +353,20 @@ game_core.prototype.update = function(t){
     if(this.players.self.instance) {
       this.players.self.instance.emit( 'onserverupdate', this.laststate );
     }
-    for(player in this.players.others) {
-      player.instance.emit( 'onserverupdate', this.laststate );
+    if(this.players.others.length){
+      for(player in this.players.others) {
+        player.instance.emit( 'onserverupdate', this.laststate );
+      }
     }
   } else{
+    this.gl.clear(this.gl.COLOR_BUFFER_BIT);
     this.client_handle_input();
+    this.players.self.updatePlayer(this.dt);
+    //<----needs the interpolation stuff and the updates etc etc
+    for(player in this.players.others){
+      player.updatePlayer(this.dt);
+    }
   }
-
-  this.players.self.updatePlayer(this.dt);
-  //<----needs the interpolation stuff and the updates etc etc
-  for(player in this.players.others){
-    player.updatePlayer(this.dt);
-  }
-
   //schedule next update
   this.updateid = window.requestAnimationFrame( this.update.bind(this), this.viewport );
 }
@@ -358,6 +376,8 @@ var game_player = function(game_instance, player_instance){
   this.instance = player_instance;
   this.game = game_instance;
   //this.team = ?
+
+  this.inputs = [];
 
   //should check for player collision first
   this.pos = {x:Math.random()*game_instance.world.width, y:Math.random()*game_instance.world.height};
@@ -444,4 +464,73 @@ function drawTile(gl,x,y,size){
     x+w[8], y+h[8], x+w[11],
     y+h[11], x+w[9], y+h[9]]),
     gl.STATIC_DRAW);
+}
+
+function initGL(canvas){
+  var gl = canvas.getContext("webgl");
+  if(!gl) {
+    return;
+  }
+  gl.viewport(0,0,gl.canvas.width,gl.canvas.height);
+  gl.clearColor(0,0,0,1);
+  gl.clear(gl.COLOR_BUFFER_BIT);
+  return gl;
+}
+
+function createShader(gl, type, source){
+  var shader = gl.createShader(type);
+  gl.shaderSource(shader,source);
+  gl.compileShader(shader);
+  var success = gl.getShaderParameter(shader, gl.COMPILE_STATUS);
+  if(success){
+    return shader;
+  }
+  console.log(gl.getShaderInfoLog(shader));
+  gl.deleteShader(shader);
+}
+
+function createProgram(gl, vert, frag){
+  var program = gl.createProgram();
+  gl.attachShader(program, vert);
+  gl.attachShader(program, frag);
+  gl.linkProgram(program);
+  var success = gl.getProgramParameter(program, gl.LINK_STATUS);
+  if(success){
+    return program;
+  }
+  console.log(gl.getProgramInfoLog(program));
+  gl.deleteProgram(program);
+}
+
+function makeShaderProgram(gl, vert_id, frag_id){
+  var vsrc = document.getElementById(vert_id).text;
+  var fsrc = document.getElementById(frag_id).text;
+  var vert = createShader(gl, gl.VERTEX_SHADER, vsrc);
+  var frag = createShader(gl, gl.FRAGMENT_SHADER, fsrc);
+  return createProgram(gl, vert, frag);
+}
+
+function setShaderAttribute(gl, program, shadervar){
+  var loc = gl.getAttribLocation(program, shadervar);
+  var buf = gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+  gl.enableVertexAttribArray(loc);
+  gl.vertexAttribPointer(loc,2,gl.FLOAT,false,0,0);
+  return buf;
+}
+
+function setResolutionUniform(gl, program){
+  var loc = gl.getUniformLocation(program, "ures");
+  gl.uniform2f(loc, gl.canvas.width, gl.canvas.height);
+}
+
+function makeTexture(gl){
+  var texture = gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_2D, texture);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+  gl.bindTexture(gl.TEXTURE_2D, texture);
+  return texture;
 }

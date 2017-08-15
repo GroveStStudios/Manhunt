@@ -12,7 +12,7 @@ var
 
   io              = require('socket.io'),
   express         = require('express'),
-  UUID            = require('node-uuid'),
+  UUID            = require('uuid'),
 
   verbose         = false,
   http            = require('http'),
@@ -35,67 +35,49 @@ console.log('\t :: Express :: Listening on port ' + gameport );
   //By default, we forward the / path to index.html automatically.
 app.get( '/', function( req, res ){
   console.log('trying to load %s', __dirname + '/index.html');
-  res.sendfile( '/index.html' , { root:__dirname });
+  res.sendFile( '/index.html' , { root:__dirname });
 });
 
-
-  //This handler will listen for requests on /*, any file from the root of our server.
-  //See expressjs documentation for more info on routing.
-
+//This handler will listen for requests on /*, any file from the root of our server.
+//See expressjs documentation for more info on routing.
 app.get( '/*' , function( req, res, next ) {
   //This is the current file they have requested
   var file = req.params[0];
   //For debugging, we can track what files are requested.
   if(verbose) console.log('\t :: Express :: file requested : ' + file);
   //Send the requesting client the file.
-  res.sendfile( __dirname + '/' + file );
+  res.sendFile( __dirname + '/' + file );
 }); //app.get *
 
 
 /* Socket.IO server set up. */
-
-//Express and socket.io can work together to serve the socket.io client files for you.
-//This way, when the client requests '/socket.io/' files, socket.io determines what the client needs.
-
 //Create a socket.io instance using our express server
 var sio = io.listen(server);
 
-//Configure the socket.io connection settings.
-//See http://socket.io/
-sio.configure(function (){
-  sio.set('log level', 0);
-  sio.set('authorization', function (handshakeData, callback) {
-    callback(null, true); // error first callback style
-  });
+sio.use(function(socket,next){
+  var handshakeData = socket.request;
+  //check handshakeData
+  next();
 });
 
-  //Enter the game server code. The game server handles
-  //client connections looking for a game, creating games,
-  //leaving games, joining games and ending games when they leave.
-game_server = require('./game.server.js');
+game_server = require('./server.js');
 
-  //Socket.io will call this function when a client connects,
-  //So we can send that client looking for a game to play,
-  //as well as give that client a unique ID to use so we can
-  //maintain the list if players.
 sio.sockets.on('connection', function (client) {
 
-      //Generate a new UUID, looks something like
-      //5b2ca132-64bd-4513-99da-90e838ca47d1
-      //and store this on their socket/connection
   client.userid = UUID();
-      //tell the player they connected, giving them their id
+  //tell the player they connected, giving them their id
+  console.log("New connection");
   client.emit('onconnected', { id: client.userid } );
   //now we can find them a game to play with someone.
   //if no game exists with someone waiting, they create one and wait.
-  game_server.findGame(client);
+  game_server.join_game(client);
   //Useful to know when someone connects
   console.log('\t socket.io:: player ' + client.userid + ' connected');
 
   //Now we want to handle some of the messages that clients will send.
   //They send messages here, and we send them to the game_server to handle.
   client.on('message', function(m) {
-    game_server.onMessage(client, m);
+    game_server.on_message(client, m);
   });
 
   //When this client disconnects, we want to tell the game server
@@ -107,7 +89,7 @@ sio.sockets.on('connection', function (client) {
     //If the client was in a game, set by game_server.findGame,
     //we can tell the game server to update that game state.
     if(client.game && client.game.id) {
-      game_server.endGame(client.game.id, client.userid);
+      game_server.end_game(client.game.id, client.userid);
     }
   });
 });
