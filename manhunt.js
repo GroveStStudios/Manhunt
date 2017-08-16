@@ -224,6 +224,11 @@ game_core.prototype.client_onreadygame = function(data) {
   console.log('server time is about ' + this.local_time);
 };
 
+game_core.prototype.client_onping = function(data) {
+  this.net_ping = new Date().getTime() - parseFloat( data );
+  this.net_latency = this.net_ping/2;
+};
+
 game_core.prototype.handle_server_input = function(client, input, input_time, input_seq) {
   if(client.userid == this.players.self.instance.userid){
     this.players.self.inputs.push({inputs:input, time:input_time, seq:input_seq});
@@ -379,6 +384,7 @@ game_core.prototype.update = function(t){
       }
     }
   } else{
+    console.log(this.players);
     this.gl.clear(this.gl.COLOR_BUFFER_BIT);
     this.client_handle_input();
     this.players.self.updatePlayer(this.dt);
@@ -400,7 +406,10 @@ var game_player = function(game_instance, player_instance){
   this.inputs = [];
 
   //should check for player collision first
-  this.pos = {x:Math.random()*game_instance.world.width, y:Math.random()*game_instance.world.height};
+  this.pos = {
+      x:(Math.random()*game_instance.world.width).fixed(3),
+      y:(Math.random()*game_instance.world.height).fixed(3)
+    };
   this.accel = {x:0, y:0};
   this.vel = {x:0, y:0};
 

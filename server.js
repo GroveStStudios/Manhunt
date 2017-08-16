@@ -93,23 +93,25 @@ game_server.end_game = function(gameid, userid) {
     game.game_core.stop_update();
     if(game.player_count > 1) {
       if(userid == game.host.userid) {
-        if(game.player_client) {
-          game.player_client.send('s.e'); //EITHER DO FOR ALL CLIENTS OR IGNORE
-          this.join_game(game.player_client);
+        for(var i=0; i<game.clients.lenth; i++) {
+          game.clients[i].send('s.e'); //EITHER DO FOR ALL CLIENTS OR IGNORE
+          this.join_game(game.clients[i]);
         }
       } else {
-        if(game.player_host) {
-          game.player_host.send('s.e');
-          game.player_host.hosting = false;
-          this.join_game(game.player_host);
+        if(game.host) {
+          game.host.send('s.e');
+          game.host.hosting = false;
+          this.join_game(game.host);
         }
+        //send to other clients and get new host
       }
+    } else {
+      delete this.games[gameid];
+      this.game_count--;
+      this.log('game removed. there are now ' + this.game_count + ' games' );
     }
-    delete this.games[gameid];
-    this.game_count--;
-    this.log('game removed. there are now ' + this.game_count + ' games' );
   } else {
-      this.log('that game was not found!');
+    this.log('that game was not found!');
   }
 };
 
