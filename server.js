@@ -67,9 +67,12 @@ game_server.join_game = function(player) {
       var game_instance = this.games[gameid];
       if(game_instance.player_count < 10){
         joined_game = true;
+        game_instance.host.send('s.a.' + player);
+        for(var i=0; i<game_instance.player_count-1; i++) {
+          game_instance.clients[i].send('s.a.' + player);
+        }
         game_instance.clients.push(player);
         game_instance.game_core.players.others.push = player;
-        //also tell other players to add player
         game_instance.player_count++;
         if(!this.games[gameid].active){
           this.start_game(this.games[gameid]);

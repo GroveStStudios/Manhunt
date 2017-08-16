@@ -149,7 +149,7 @@ game_core.prototype.client_connect_to_server = function() {
       this.players.self.state = 'connecting';
   }.bind(this));
   //this.socket.on('disconnect', this.client_ondisconnect.bind(this));
-  this.socket.on('onserverupdate', this.client_onserverupdate_recieved.bind(this));
+  this.socket.on('onserverupdate', this.client_onserverupdate_received.bind(this));
   this.socket.on('onconnected', this.client_onconnected.bind(this));
   //this.socket.on('error', this.client_ondisconnect.bind(this));
   this.socket.on('message', this.client_onnetmessage.bind(this));
@@ -161,20 +161,7 @@ game_core.prototype.client_onconnected = function(data) {
   this.players.self.online = true;
 };
 
-game_core.prototype.client_onserverupdate_recieved = function(data){
-  if(this.players.self.host){
-    var player_host = this.players.self;
-    var player_clients = this.players.clients;
-  } else {
-    var player_clients = [this.players.self];
-    for (client in this.players.clients) {
-      if (client.self.host){
-        var player_host = client.self;
-      } else{
-        player_clients.push(client.self);
-      }
-    }
-  }
+game_core.prototype.client_onserverupdate_received = function(data){
   //Store server time
   this.server_time = data.t;
   //Update our local offset time from the last server update
@@ -201,14 +188,14 @@ game_core.prototype.client_onnetmessage = function(data) {
           this.client_onhostgame(commanddata); break;
         case 'j' : //join a game requested
           this.client_onjoingame(commanddata); break;
+        case 'a':  //add new player instance to client list
+          this.client_onaddplayer(commanddata); break;
         case 'r' : //ready a game requested
           this.client_onreadygame(commanddata); break;
         case 'e' : //end game requested
           this.client_ondisconnect(commanddata); break;
         case 'p' : //server ping
           this.client_onping(commanddata); break;
-        case 'c' : //other player changed colors
-          this.client_on_otherclientcolorchange(commanddata); break;
       }
     break;
   }
@@ -226,6 +213,10 @@ game_core.prototype.client_onjoingame = function(data) {
     this.players.self.host = false;
     this.players.self.state = 'connected.joined.waiting';
 };
+
+game_core.prototype.client_onaddplayer = function(data) {
+  this.players.others.push(new game_player(this,data));
+}
 
 game_core.prototype.client_onreadygame = function(data) {
   var server_time = parseFloat(data.replace('-','.'));
@@ -324,6 +315,24 @@ game_core.prototype.process_input = function( player ) {
   }
 };
 
+game_core.prototype.client_process_net_updates = function(){
+  if(!this.server_updates.length) {
+    return;
+  }
+  var current_time = this.client_time;
+  var target = null;
+  var previous = null;
+  for(var i = 0; i < this.server_updates.length-1; i++) {
+    var point = this.server_updates[i];
+    var next_point = this.server_updates[i+1];
+    if(current_time > point.t && current_time < next_point.t) {
+      target = next_point;
+      previous = point;
+      break;
+    }
+  }
+}
+
 //Set a ping timer to 1 second, to maintain the ping/latency between
 //client and server and calculated roughly how our connection is doing
 game_core.prototype.client_create_ping_timer = function() {
@@ -354,7 +363,8 @@ game_core.prototype.update = function(t){
     this.server_time = this.local_time;
     this.laststate = {
       hp  : this.players.self.pos,                //'host position', the game creators position
-      //cp  : this.players.other.pos,               //'client position', the person that joined, their position
+      cp  : this.players.others.map(function(p){ return p.pos; }),
+                                                  //'clients position', the person that joined, their position
       his : this.players.self.last_input_seq,     //'host input sequence', the last input we processed for the host
       cis : this.players.others.map(function(p){ return p.last_input_seq; }),
                                                   //'client input sequence', the last inputs we processed for the client
