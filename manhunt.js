@@ -78,7 +78,6 @@ var game_core = function(game_instance){
     this.ghosts.server_pos_other.state = 'server_pos';
     this.ghosts.server_pos_self.pos = { x:20, y:20 };
     */
-    this.server_updates = [];
   }
 
   this.create_keyboard();
@@ -162,18 +161,13 @@ game_core.prototype.client_onconnected = function(data) {
 };
 
 game_core.prototype.client_onserverupdate_received = function(data){
-  //Store server time
   this.server_time = data.t;
-  //Update our local offset time from the last server update
   this.client_time = this.server_time - (this.net_offset/1000);
-  //Cache the data from the server
   this.server_updates.push(data);
-  //we limit the buffer in seconds worth of updates
   if(this.server_updates.length >= ( 60*this.buffer_size )) {
     this.server_updates.splice(0,1);
   }
   this.oldest_tick = this.server_updates[0].t;
-  //this.client_process_net_prediction_correction();
 };
 
 game_core.prototype.client_onnetmessage = function(data) {
@@ -338,49 +332,18 @@ game_core.prototype.client_process_net_updates = function(){
   }
   if(target && previous) {
     this.target_time = target.t;
-    var difference = this.target_time - current_time;
-    var max_difference = (target.t - previous.t).fixed(3);
-    var time_point = (difference/max_difference).fixed(3);
+    var time_point = ((this.target_time - current_time)/(target.t - previous.t)).fixed(3);
     if( isNaN(time_point) || time_point == -Infinity || time_point == Infinity){
       time_point = 0;
     }
-
-    var latest_server_data = this.server_updates[ this.server_updates.length-1 ];
-    //These are the exact server positions from this tick, but only for the ghost
-    var other_server_pos = this.players.self.host ? latest_server_data.cp : latest_server_data.hp;
-    //The other players positions in this timeline, behind us and in front of us
-    var other_target_pos = this.players.self.host ? target.cp : target.hp;
-    var other_past_pos = this.players.self.host ? previous.cp : previous.hp;
-
-    //update the dest block, this is a simple lerp
-    //to the target from the previous point in the server_updates buffer
-    this.ghosts.server_pos_other.pos = this.pos(other_server_pos);
-    this.ghosts.pos_other.pos = this.v_lerp(other_past_pos, other_target_pos, time_point);
-
-    this.players.other.pos = this.pos(this.ghosts.pos_other.pos);
-    var my_server_pos = this.players.self.host ? latest_server_data.hp : latest_server_data.cp;
-
-    //The other players positions in this timeline, behind us and in front of us
-    var my_target_pos = this.players.self.host ? target.hp : target.cp;
-    var my_past_pos = this.players.self.host ? previous.hp : previous.cp;
-
-    //Snap the ghost to the new server position
-    this.ghosts.server_pos_self.pos = this.pos(my_server_pos);
-    var local_target = this.v_lerp(my_past_pos, my_target_pos, time_point);
-    this.players.self.pos = this.pos( local_target );
+    //this.laststate = {sp,cp,sis,cis,t};
+    for(var i = 0; i < this.players.others.length; i++){
+      var other_target = this.v_lerp(previous.cp[i], target.cp[i], time_point);
+      this.players.others[i].pos = this.v_lerp(this.players.others[i].pos, other_target, this._pdt*this.client_smooth);
+    }
+    var local_target = this.v_lerp(previous.sp, target.sp, time_point);
+    this.players.self.pos = this.v_lerp(this.players.self.pos, local_target, this._pdt*this.client_smooth);
   }
-}
-
-game_core.prototype.client_update_local_position = function(){
-  var t = (this.local_time - this.players.self.state_time) / this._pdt;
-  //Then store the states for clarity,
-  var old_state = this.players.self.old_state.pos;
-  var current_state = this.players.self.cur_state.pos;
-  //Make sure the visual position matches the states we have stored
-  //this.players.self.pos = this.v_add( old_state, this.v_mul_scalar( this.v_sub(current_state,old_state), t )  );
-  this.players.self.pos = current_state;
-  //We handle collision on client if predicting.
-  this.check_collision( this.players.self );
 }
 
 //Set a ping timer to 1 second, to maintain the ping/latency between
@@ -412,10 +375,10 @@ game_core.prototype.update = function(t){
   if(this.server){
     this.server_time = this.local_time;
     this.laststate = {
-      hp  : this.players.self.pos,                //'host position', the game creators position
+      sp  : this.players.self.pos,                //'self position', the game creators position
       cp  : this.players.others.map(function(p){ return p.pos; }),
                                                   //'clients position', the person that joined, their position
-      his : this.players.self.last_input_seq,     //'host input sequence', the last input we processed for the host
+      sis : this.players.self.last_input_seq,     //'self input sequence', the last input we processed for the host
       cis : this.players.others.map(function(p){ return p.last_input_seq; }),
                                                   //'client input sequence', the last inputs we processed for the client
       t   : this.server_time                      // our current local time on the server
@@ -425,7 +388,20 @@ game_core.prototype.update = function(t){
     }
     if(this.players.others.length){
       for(var i=0; i<this.players.others.length; i++) {
-        this.players.others[i].instance.emit( 'onserverupdate', this.laststate );
+        var laststate = {
+          sp : this.players.others[i].pos,
+          cp : [this.players.self.pos],
+          sis : this.players.others[i].last_input_seq,
+          cis : [this.players.self.last_input_seq],
+          t: this.server_time
+        }
+        for(var j = 0; j < this.players.others.length; j++){
+          if(j != i){
+            cp.push(this.players.others[i].pos);
+            cis.push(this.players.others[i].last_input_seq);
+          }
+        }
+        this.players.others[i].instance.emit( 'onserverupdate', laststate );
       }
     }
   } else{
@@ -434,10 +410,7 @@ game_core.prototype.update = function(t){
     this.client_handle_input();
 
     this.client_process_net_updates();
-
-    this.client_update_local_positions();
     this.players.self.updatePlayer(this.dt);
-    //<----needs the interpolation stuff and the updates etc etc
     for(var i=0; i<this.players.others.length; i++) {
       this.players.others[i].updatePlayer(this.dt);
     }
