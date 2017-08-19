@@ -33,6 +33,15 @@ var game_core = function(game_instance){
   this.teamTwoCount = 0;
   this.keyIsPressed = {};
 
+  this.max_speed = 4.0;
+  this.accel_scaling = 0.07;
+
+  this._pdt = 0.0001;
+  this._pdte = new Date().getTime();
+  this.local_time = 0.016;
+  this._dt = new Date().getTime();
+  this._dte = new Date().getTime();
+
   if(this.server){
     this.players = {
       self: new game_player(this,this.instance.host),
@@ -71,15 +80,6 @@ var game_core = function(game_instance){
     */
     this.server_updates = [];
   }
-
-  this.max_speed = 4.0;
-  this.accel_scaling = 0.07;
-
-  this._pdt = 0.0001;
-  this._pdte = new Date().getTime();
-  this.local_time = 0.016;
-  this._dt = new Date().getTime();
-  this._dte = new Date().getTime();
 
   this.create_keyboard();
   this.create_timer();
@@ -336,6 +336,59 @@ game_core.prototype.client_process_net_updates = function(){
       break;
     }
   }
+  if(target && previous) {
+    this.target_time = target.t;
+    var difference = this.target_time - current_time;
+    var max_difference = (target.t - previous.t).fixed(3);
+    var time_point = (difference/max_difference).fixed(3);
+    
+    if( isNaN(time_point) || time_point == -Infinity || time_point == Infinity){
+        time_point = 0;
+    }
+    var latest_server_data = this.server_updates[ this.server_updates.length-1 ];
+
+        //These are the exact server positions from this tick, but only for the ghost
+    var other_server_pos = this.players.self.host ? latest_server_data.cp : latest_server_data.hp;
+
+        //The other players positions in this timeline, behind us and in front of us
+    var other_target_pos = this.players.self.host ? target.cp : target.hp;
+    var other_past_pos = this.players.self.host ? previous.cp : previous.hp;
+
+        //update the dest block, this is a simple lerp
+        //to the target from the previous point in the server_updates buffer
+    this.ghosts.server_pos_other.pos = this.pos(other_server_pos);
+    this.ghosts.pos_other.pos = this.v_lerp(other_past_pos, other_target_pos, time_point);
+
+    if(this.client_smoothing) {
+        this.players.other.pos = this.v_lerp( this.players.other.pos, this.ghosts.pos_other.pos, this._pdt*this.client_smooth);
+    } else {
+        this.players.other.pos = this.pos(this.ghosts.pos_other.pos);
+    }
+
+        //Now, if not predicting client movement , we will maintain the local player position
+        //using the same method, smoothing the players information from the past.
+    if(!this.client_predict && !this.naive_approach) {
+
+            //These are the exact server positions from this tick, but only for the ghost
+        var my_server_pos = this.players.self.host ? latest_server_data.hp : latest_server_data.cp;
+
+            //The other players positions in this timeline, behind us and in front of us
+        var my_target_pos = this.players.self.host ? target.hp : target.cp;
+        var my_past_pos = this.players.self.host ? previous.hp : previous.cp;
+
+            //Snap the ghost to the new server position
+        this.ghosts.server_pos_self.pos = this.pos(my_server_pos);
+        var local_target = this.v_lerp(my_past_pos, my_target_pos, time_point);
+
+            //Smoothly follow the destination position
+        if(this.client_smoothing) {
+            this.players.self.pos = this.v_lerp( this.players.self.pos, local_target, this._pdt*this.client_smooth);
+        } else {
+            this.players.self.pos = this.pos( local_target );
+        }
+    }
+
+}
 }
 
 //Set a ping timer to 1 second, to maintain the ping/latency between
@@ -387,6 +440,10 @@ game_core.prototype.update = function(t){
     console.log(this.players);
     this.gl.clear(this.gl.COLOR_BUFFER_BIT);
     this.client_handle_input();
+
+    this.client_process_net_updates();
+
+    this.client_update_local_positions();
     this.players.self.updatePlayer(this.dt);
     //<----needs the interpolation stuff and the updates etc etc
     for(var i=0; i<this.players.others.length; i++) {
@@ -406,10 +463,11 @@ var game_player = function(game_instance, player_instance){
   this.inputs = [];
 
   //should check for player collision first
-  this.pos = {
-      x:(Math.random()*game_instance.world.width).fixed(3),
-      y:(Math.random()*game_instance.world.height).fixed(3)
-    };
+  /*this.pos = {
+      x:(Math.random()*game_instance.camera.width).fixed(3),
+      y:(Math.random()*game_instance.camera.height).fixed(3)
+    };*/
+  this.pos = {x:30, y:30};
   this.accel = {x:0, y:0};
   this.vel = {x:0, y:0};
 
@@ -419,7 +477,7 @@ var game_player = function(game_instance, player_instance){
   this.speed2 = 0; //square of player speed
 
   this.color = 'rgba(255,255,255,1)';
-  this.size = 3;
+  this.size = 10;
   //other things the player has
 };
 

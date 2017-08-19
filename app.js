@@ -8,7 +8,7 @@
 */
 
 var
-  gameport        = process.env.PORT || 4004,
+  gameport        = process.env.PORT || 8080,
 
   io              = require('socket.io'),
   express         = require('express'),
