@@ -341,54 +341,46 @@ game_core.prototype.client_process_net_updates = function(){
     var difference = this.target_time - current_time;
     var max_difference = (target.t - previous.t).fixed(3);
     var time_point = (difference/max_difference).fixed(3);
-    
     if( isNaN(time_point) || time_point == -Infinity || time_point == Infinity){
-        time_point = 0;
+      time_point = 0;
     }
+
     var latest_server_data = this.server_updates[ this.server_updates.length-1 ];
-
-        //These are the exact server positions from this tick, but only for the ghost
+    //These are the exact server positions from this tick, but only for the ghost
     var other_server_pos = this.players.self.host ? latest_server_data.cp : latest_server_data.hp;
-
-        //The other players positions in this timeline, behind us and in front of us
+    //The other players positions in this timeline, behind us and in front of us
     var other_target_pos = this.players.self.host ? target.cp : target.hp;
     var other_past_pos = this.players.self.host ? previous.cp : previous.hp;
 
-        //update the dest block, this is a simple lerp
-        //to the target from the previous point in the server_updates buffer
+    //update the dest block, this is a simple lerp
+    //to the target from the previous point in the server_updates buffer
     this.ghosts.server_pos_other.pos = this.pos(other_server_pos);
     this.ghosts.pos_other.pos = this.v_lerp(other_past_pos, other_target_pos, time_point);
 
-    if(this.client_smoothing) {
-        this.players.other.pos = this.v_lerp( this.players.other.pos, this.ghosts.pos_other.pos, this._pdt*this.client_smooth);
-    } else {
-        this.players.other.pos = this.pos(this.ghosts.pos_other.pos);
-    }
+    this.players.other.pos = this.pos(this.ghosts.pos_other.pos);
+    var my_server_pos = this.players.self.host ? latest_server_data.hp : latest_server_data.cp;
 
-        //Now, if not predicting client movement , we will maintain the local player position
-        //using the same method, smoothing the players information from the past.
-    if(!this.client_predict && !this.naive_approach) {
+    //The other players positions in this timeline, behind us and in front of us
+    var my_target_pos = this.players.self.host ? target.hp : target.cp;
+    var my_past_pos = this.players.self.host ? previous.hp : previous.cp;
 
-            //These are the exact server positions from this tick, but only for the ghost
-        var my_server_pos = this.players.self.host ? latest_server_data.hp : latest_server_data.cp;
-
-            //The other players positions in this timeline, behind us and in front of us
-        var my_target_pos = this.players.self.host ? target.hp : target.cp;
-        var my_past_pos = this.players.self.host ? previous.hp : previous.cp;
-
-            //Snap the ghost to the new server position
-        this.ghosts.server_pos_self.pos = this.pos(my_server_pos);
-        var local_target = this.v_lerp(my_past_pos, my_target_pos, time_point);
-
-            //Smoothly follow the destination position
-        if(this.client_smoothing) {
-            this.players.self.pos = this.v_lerp( this.players.self.pos, local_target, this._pdt*this.client_smooth);
-        } else {
-            this.players.self.pos = this.pos( local_target );
-        }
-    }
-
+    //Snap the ghost to the new server position
+    this.ghosts.server_pos_self.pos = this.pos(my_server_pos);
+    var local_target = this.v_lerp(my_past_pos, my_target_pos, time_point);
+    this.players.self.pos = this.pos( local_target );
+  }
 }
+
+game_core.prototype.client_update_local_position = function(){
+  var t = (this.local_time - this.players.self.state_time) / this._pdt;
+  //Then store the states for clarity,
+  var old_state = this.players.self.old_state.pos;
+  var current_state = this.players.self.cur_state.pos;
+  //Make sure the visual position matches the states we have stored
+  //this.players.self.pos = this.v_add( old_state, this.v_mul_scalar( this.v_sub(current_state,old_state), t )  );
+  this.players.self.pos = current_state;
+  //We handle collision on client if predicting.
+  this.check_collision( this.players.self );
 }
 
 //Set a ping timer to 1 second, to maintain the ping/latency between
