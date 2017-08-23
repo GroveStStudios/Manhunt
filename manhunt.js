@@ -4,23 +4,23 @@ var frames = 60/1000;
 
 //not sure what this does yet
 ( function () {
-    var lastTime = 0;
-    var vendors = [ 'ms', 'moz', 'webkit', 'o' ];
-    for ( var x = 0; x < vendors.length && !window.requestAnimationFrame; ++ x ) {
-        window.requestAnimationFrame = window[ vendors[ x ] + 'RequestAnimationFrame' ];
-        window.cancelAnimationFrame = window[ vendors[ x ] + 'CancelAnimationFrame' ] || window[ vendors[ x ] + 'CancelRequestAnimationFrame' ];
-    }
-    if ( !window.requestAnimationFrame ) {
-        window.requestAnimationFrame = function ( callback, element ) {
-            var currTime = Date.now(), timeToCall = Math.max( 0, frames - ( currTime - lastTime ) );
-            var id = window.setTimeout( function() { callback( currTime + timeToCall ); }, timeToCall );
-            lastTime = currTime + timeToCall;
-            return id;
-        };
-    }
-    if ( !window.cancelAnimationFrame ) {
-        window.cancelAnimationFrame = function ( id ) { clearTimeout( id ); };
-    }
+  var lastTime = 0;
+  var vendors = [ 'ms', 'moz', 'webkit', 'o' ];
+  for ( var x = 0; x < vendors.length && !window.requestAnimationFrame; ++ x ) {
+    window.requestAnimationFrame = window[ vendors[ x ] + 'RequestAnimationFrame' ];
+    window.cancelAnimationFrame = window[ vendors[ x ] + 'CancelAnimationFrame' ] || window[ vendors[ x ] + 'CancelRequestAnimationFrame' ];
+  }
+  if ( !window.requestAnimationFrame ) {
+    window.requestAnimationFrame = function ( callback, element ) {
+      var currTime = Date.now(), timeToCall = Math.max( 0, frames - ( currTime - lastTime ) );
+      var id = window.setTimeout( function() { callback( currTime + timeToCall ); }, timeToCall );
+      lastTime = currTime + timeToCall;
+      return id;
+    };
+  }
+  if ( !window.cancelAnimationFrame ) {
+    window.cancelAnimationFrame = function ( id ) { clearTimeout( id ); };
+  }
 }() );
 
 //game instance constructor
@@ -33,8 +33,8 @@ var game_core = function(game_instance){
   this.teamTwoCount = 0;
   this.keyIsPressed = {};
 
-  this.max_speed = 4.0;
-  this.accel_scaling = 0.07;
+  this.max_speed = 2000.0;
+  this.accel_scaling = 1000.0;
 
   this._pdt = 0.0001;
   this._pdte = new Date().getTime();
@@ -57,9 +57,10 @@ var game_core = function(game_instance){
     this.gl.useProgram(prog);
     setResolutionUniform(this.gl, prog);
     this.colorUniform = this.gl.getUniformLocation(prog, "col");
+    //uv draw
     var uvBuf = setShaderAttribute(this.gl, prog, "uvcoord");
-    //draw tile UVs (same for all tiles so we can just do it here, but draw is in other func?)
     drawTile(this.gl,0,0,1/3.71);
+
     var posBuf = setShaderAttribute(this.gl, prog, "pos");
     //makeTexture(this.gl); (will need to change buffer per player)
 
@@ -67,20 +68,10 @@ var game_core = function(game_instance){
       self: new game_player(this),
       others: [] //other players will be added when they join
     };
-    /*
-    this.ghosts = {
-      serverPosSelf : new game_player(this),
-      serverPosOthers : [],
-      posOthers: []
-    }
-    this.ghosts.pos_other.state = 'dest_pos';
-    this.ghosts.server_pos_self.state = 'server_pos';
-    this.ghosts.server_pos_other.state = 'server_pos';
-    this.ghosts.server_pos_self.pos = { x:20, y:20 };
-    */
+
+    this.create_keyboard();
   }
 
-  this.create_keyboard();
   this.create_timer();
   //Client specific initialisation
   if(!this.server) {
@@ -96,15 +87,12 @@ var game_core = function(game_instance){
 }
 
 game_core.prototype.create_keyboard = function(){
-  //set up keyboard listeners
-  if(!this.server){
-    document.addEventListener("keydown",function(event){
-      this.keyIsPressed[event.key] = true;
-    }.bind(this));
-    document.addEventListener("keyup",function(event){
-      this.keyIsPressed[event.key] = false;
-    }.bind(this));
-  }
+  document.addEventListener("keydown",function(event){
+    this.keyIsPressed[event.key] = true;
+  }.bind(this));
+  document.addEventListener("keyup",function(event){
+    this.keyIsPressed[event.key] = false;
+  }.bind(this));
 }
 
 game_core.prototype.create_timer = function(){
@@ -145,7 +133,7 @@ game_core.prototype.client_create_configuration = function() {
 game_core.prototype.client_connect_to_server = function() {
   this.socket = io.connect();
   this.socket.on('connect', function(){
-      this.players.self.state = 'connecting';
+    this.players.self.state = 'connecting';
   }.bind(this));
   //this.socket.on('disconnect', this.client_ondisconnect.bind(this));
   this.socket.on('onserverupdate', this.client_onserverupdate_received.bind(this));
@@ -161,6 +149,7 @@ game_core.prototype.client_onconnected = function(data) {
 };
 
 game_core.prototype.client_onserverupdate_received = function(data){
+  console.log('server update received: '+JSON.stringify(data));
   this.server_time = data.t;
   this.client_time = this.server_time - (this.net_offset/1000);
   this.server_updates.push(data);
@@ -204,17 +193,20 @@ game_core.prototype.client_onhostgame = function(data) {
 };
 
 game_core.prototype.client_onjoingame = function(data) {
-    this.players.self.host = false;
-    this.players.self.state = 'connected.joined.waiting';
+  this.players.self.host = false;
+  this.players.self.state = 'connected.joined.waiting';
+  var ids = JSON.parse(data);
+  for(var i = 0; i < ids.length; i++){
+    this.players.others.push(new game_player(this,{userid: ids[i]}));
+  }
 };
 
 game_core.prototype.client_onaddplayer = function(data) {
-  this.players.others.push(new game_player(this,data));
+  this.players.others.push(new game_player(this, {userid: data}));
 }
 
 game_core.prototype.client_onreadygame = function(data) {
-  var server_time = parseFloat(data.replace('-','.'));
-  this.local_time = server_time + this.net_latency;
+  this.local_time = parseFloat(data.replace('-','.')) + this.net_latency;
   console.log('server time is about ' + this.local_time);
 };
 
@@ -224,11 +216,14 @@ game_core.prototype.client_onping = function(data) {
 };
 
 game_core.prototype.handle_server_input = function(client, input, input_time, input_seq) {
-  if(client.userid == this.players.self.instance.userid){
+  console.log('server handling input of client: ' + client.userid);
+  if(client.userid == this.players.self.id){
+    console.log('server handle host');
     this.players.self.inputs.push({inputs:input, time:input_time, seq:input_seq});
   } else {
     for(var c=0; c<this.players.others.length; c++){
-      if(client.userid == this.players.others[c].instance.userid){ //this.players.others[clientid].instance???
+      if(client.userid == this.players.others[c].id){
+        console.log('server handle client ' + (c+1));
         this.players.others[c].inputs.push({inputs:input, time:input_time, seq:input_seq});
       }
     }
@@ -236,34 +231,22 @@ game_core.prototype.handle_server_input = function(client, input, input_time, in
 };
 
 game_core.prototype.client_handle_input = function() {
-  var input_x = 0;
-  var input_y = 0;
   var input = [];
   if(this.keyIsPressed['d'] || this.keyIsPressed['ArrowRight']){
-    input_x++;
     input.push('r');
   }
   if(this.keyIsPressed['a'] || this.keyIsPressed['ArrowLeft']){
-    input_x--;
     input.push('l');
   }
   if(this.keyIsPressed['w'] || this.keyIsPressed['ArrowUp']){
-    input_y++;
     input.push('u');
   }
   if(this.keyIsPressed['s'] || this.keyIsPressed['ArrowDown']){
-    input_y--;
     input.push('d');
   }
   if(this.keyIsPressed[' ']){
-    game.players.self.vel.x = 0;
-    game.players.self.vel.y = 0;
-    input_x = 0;
-    input_y = 0;
     input.push('s');
   }
-  game.players.self.accel.x = input_x;
-  game.players.self.accel.y = input_y;
 
   if(input.length){
     this.input_seq++;
@@ -296,14 +279,15 @@ game_core.prototype.process_input = function( player ) {
         x_dir += 1;
       }
       if(key == 'd') {
-        y_dir += 1;
+        y_dir -= 1;
       }
       if(key == 'u') {
-        y_dir -= 1;
+        y_dir += 1;
       }
       if(key == 's') {
         x_dir = 0;
         y_dir = 0;
+        player.vel = {x: 0, y: 0}; //TODO test this
         break;
       }
     }
@@ -312,6 +296,8 @@ game_core.prototype.process_input = function( player ) {
     player.last_input_time = player.inputs[player.inputs.length-1].time;
     player.last_input_seq = player.inputs[player.inputs.length-1].seq;
   }
+  player.inputs = [];
+  return {x: x_dir, y:y_dir};
 };
 
 game_core.prototype.client_process_net_updates = function(){
@@ -338,11 +324,17 @@ game_core.prototype.client_process_net_updates = function(){
     }
     //this.laststate = {sp,cp,sis,cis,t};
     for(var i = 0; i < this.players.others.length; i++){
-      var other_target = this.v_lerp(previous.cp[i], target.cp[i], time_point);
-      this.players.others[i].pos = this.v_lerp(this.players.others[i].pos, other_target, this._pdt*this.client_smooth);
+      if(previous.cp[i]){
+        this.players.others[i].pos = this.v_lerp(this.players.others[i].pos,
+                                          this.v_lerp(previous.cp[i], target.cp[i], time_point),
+                                          this._pdt*this.client_smooth);
+      } else if(target.cp[i]){
+        this.players.others[i].pos = target.cp[i];
+      }
     }
-    var local_target = this.v_lerp(previous.sp, target.sp, time_point);
-    this.players.self.pos = this.v_lerp(this.players.self.pos, local_target, this._pdt*this.client_smooth);
+    this.players.self.pos = this.v_lerp(this.players.self.pos,
+                                this.v_lerp(previous.sp, target.sp, time_point),
+                                this._pdt*this.client_smooth);
   }
 }
 
@@ -366,13 +358,29 @@ game_core.prototype.stop_update = function() {  window.cancelAnimationFrame( thi
 game_core.prototype.lerp = function(p, n, t) { var _t = Number(t); _t = (Math.max(0, Math.min(1, _t))).fixed(); return (p + _t * (n - p)).fixed(); };
 game_core.prototype.v_lerp = function(v,tv,t) { return { x: this.lerp(v.x, tv.x, t), y:this.lerp(v.y, tv.y, t) }; };
 
-game_core.prototype.checkCollision = function(item, others){ }
+game_core.prototype.checkCollision = function(player, others){ }
+
+game_core.prototype.server_add_player = function(client) {
+  this.players.others.push(new game_player(this, client));
+}
 
 game_core.prototype.update = function(t){
   this.dt = this.lastframetime ? ( (t - this.lastframetime)/1000.0).fixed() : 0.016;
   this.lastframetime = t;
+  this._pdt = (new Date().getTime() - this._pdte)/1000.0;
+  this._pdte = new Date().getTime();
 
   if(this.server){
+    //update player physics
+    this.players.self.accel = this.process_input(this.players.self);
+    this.players.self.update_player_physics(this.dt);
+    for(var i=0; i<this.players.others.length; i++) {
+      this.players.others[i].accel = this.process_input(this.players.others[i]);
+      this.players.others[i].update_player_physics(this.dt);
+    }
+    //check collisions
+
+    //emit server states
     this.server_time = this.local_time;
     this.laststate = {
       sp  : this.players.self.pos,                //'self position', the game creators position
@@ -384,7 +392,9 @@ game_core.prototype.update = function(t){
       t   : this.server_time                      // our current local time on the server
     };
     if(this.players.self.instance) {
-      this.players.self.instance.emit( 'onserverupdate', this.laststate );
+      console.log('server update sent to host');
+      console.log(this.laststate);
+      this.players.self.instance.emit('onserverupdate', this.laststate);
     }
     if(this.players.others.length){
       for(var i=0; i<this.players.others.length; i++) {
@@ -397,32 +407,54 @@ game_core.prototype.update = function(t){
         }
         for(var j = 0; j < this.players.others.length; j++){
           if(j != i){
-            cp.push(this.players.others[i].pos);
-            cis.push(this.players.others[i].last_input_seq);
+            laststate.cp.push(this.players.others[j].pos);
+            laststate.cis.push(this.players.others[j].last_input_seq);
           }
         }
+        console.log('server update to client '+i);
+        console.log(laststate);
         this.players.others[i].instance.emit( 'onserverupdate', laststate );
       }
     }
   } else{
-    console.log(this.players);
     this.gl.clear(this.gl.COLOR_BUFFER_BIT);
     this.client_handle_input();
-
     this.client_process_net_updates();
-    this.players.self.updatePlayer(this.dt);
-    for(var i=0; i<this.players.others.length; i++) {
-      this.players.others[i].updatePlayer(this.dt);
+
+    //draw players
+    console.log('self');
+    this.draw(this.players.self);
+    console.log('others');
+    for(var i = 0; i < this.players.others.length; i++){
+      //if(on camera){
+      this.draw(this.players.others[i]);
+      //}
     }
   }
   //schedule next update
   this.updateid = window.requestAnimationFrame( this.update.bind(this), this.viewport );
 }
 
+game_core.prototype.draw = function(item){
+  /*if(this.team == 0){
+    this.game.gl.uniform3f(this.game.colorUniform, .351, .613, 1);
+  } else {
+    this.game.gl.uniform3f(this.game.colorUniform, .703, 1, 1);
+  }*/
+  //drawTile(this.gl, item.pos.x - this.camera.x, item.pos.y - this.camera.y, item.size);
+  console.log(item);
+  drawTile(this.gl, item.pos.x, item.pos.y, item.size);
+  this.gl.drawArrays(this.gl.TRIANGLES,0,42); //3*14=42
+}
+
 //player class constructor
 var game_player = function(game_instance, player_instance){
   this.instance = player_instance;
   this.game = game_instance;
+  if(player_instance) {
+    console.log('game_player constructor: '+player_instance.userid);
+    this.id = player_instance.userid;
+  }
   //this.team = ?
 
   this.inputs = [];
@@ -442,11 +474,11 @@ var game_player = function(game_instance, player_instance){
   this.speed2 = 0; //square of player speed
 
   this.color = 'rgba(255,255,255,1)';
-  this.size = 10;
+  this.size = 5;
   //other things the player has
 };
 
-game_player.prototype.updatePlayer = function(dt){
+game_player.prototype.update_player_physics = function(dt){
   this.vel.x += this.accel.x*this.accel_scaling*dt;
   this.vel.y += this.accel.y*this.accel_scaling*dt;
   this.speed2 = this.vel.x*this.vel.x + this.vel.y*this.vel.y;
@@ -457,18 +489,6 @@ game_player.prototype.updatePlayer = function(dt){
   }
   this.pos.x += this.vel.x*dt;
   this.pos.y += this.vel.y*dt;
-
-  if(this.team == 0){
-    this.game.gl.uniform3f(this.game.colorUniform, .351, .613, 1);
-  } else {
-    this.game.gl.uniform3f(this.game.colorUniform, .703, 1, 1);
-  }
-  this.draw(); //only do if within camera range of self
-}
-
-game_player.prototype.draw = function(){
-  drawTile(this.game.gl,this.pos.x,this.pos.y,this.size);
-  this.game.gl.drawArrays(this.game.gl.TRIANGLES,0,42); //3*14=42
 }
 
 //draw octogonal tile from bottom-left anchor point

@@ -51,7 +51,6 @@ game_server.start_game = function(game){
   console.log("game "+game.id+" has begun");
   game.host.send('s.r.'+String(game.game_core.local_time).replace('.','-'));
   for(var i=0; i<game.clients.length; i++){
-    game.clients[i].send('s.j.' + game.host.userid);
     game.clients[i].game = game;
     game.clients[i].send('s.r.'+String(game.game_core.local_time).replace('.','-'));
   }
@@ -64,18 +63,23 @@ game_server.join_game = function(player) {
     var joined_game = false;
     for(var gameid in this.games){
       if(!this.games.hasOwnProperty(gameid)) continue;
-      var game_instance = this.games[gameid];
-      if(game_instance.player_count < 10){
+      var game = this.games[gameid];
+      if(game.player_count < 10){
+        //send the player the IDs of all the other players
+        player.send('s.j.' + JSON.stringify([game.host.userid].concat(game.clients.map(function(c){ return c.userid; }))));
         joined_game = true;
-        game_instance.host.send('s.a.' + player);
-        for(var i=0; i<game_instance.player_count-1; i++) {
-          game_instance.clients[i].send('s.a.' + player);
+        game.host.send('s.a.' + player.userid);
+        for(var i=0; i<game.player_count-1; i++) {
+          game.clients[i].send('s.a.' + player.userid);
         }
-        game_instance.clients.push(player);
-        game_instance.game_core.players.others.push = player;
-        game_instance.player_count++;
+        game.clients.push(player);
+        game.game_core.server_add_player(player);
+        game.player_count++;
         if(!this.games[gameid].active){
           this.start_game(this.games[gameid]);
+        } else {
+          player.game = game;
+          player.send('s.r.'+String(game.game_core.local_time).replace('.','-'));
         }
       }
     }
@@ -125,11 +129,12 @@ game_server.on_input = function(client, parts) {
 };
 
 game_server.on_message = function(client,message) {
+  console.log(JSON.stringify(message));
   var message_parts = message.split('.');
   var message_type = message_parts[0];
   if(message_type == 'i') {
-     this.on_input(client, message_parts);
+    this.on_input(client, message_parts);
   } else if(message_type == 'p') {
-     client.send('s.p.' + message_parts[1]);
+    client.send('s.p.' + message_parts[1]);
   }
 };
