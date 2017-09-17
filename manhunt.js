@@ -1,6 +1,6 @@
 "use strict";
 
-var frames = 60/1000;
+const frames = 60/1000;
 
 //not sure what this does yet
 ( function () {
@@ -42,6 +42,8 @@ var game_core = function(game_instance){
   this._dt = new Date().getTime();
   this._dte = new Date().getTime();
 
+  this.create_timer();
+
   if(this.server){
     this.players = {
       self: new game_player(this,this.instance.host),
@@ -49,6 +51,8 @@ var game_core = function(game_instance){
         return new game_player(this,client);
       })
     };
+    this.server_time = 0;
+    this.laststate = {};
   } else{
     //initialize gl, programs, and buffers
     this.viewport = document.getElementById('viewport');
@@ -70,20 +74,13 @@ var game_core = function(game_instance){
     };
 
     this.create_keyboard();
-  }
-
-  this.create_timer();
-  //Client specific initialisation
-  if(!this.server) {
     this.client_create_configuration();
     //list of recent server updates we interpolate across
     this.server_updates = [];
     this.client_connect_to_server();
     this.client_create_ping_timer();
-  } else { //if server
-    this.server_time = 0;
-    this.laststate = {};
   }
+
 }
 
 game_core.prototype.create_keyboard = function(){
